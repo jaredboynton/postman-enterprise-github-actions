@@ -1,4 +1,4 @@
-# Postman-GitHub Actions Reference
+# Postman Enterprise - GitHub Actions Reference
 
 ## Overview
 
