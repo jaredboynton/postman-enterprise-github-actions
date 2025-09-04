@@ -1,6 +1,4 @@
-# Postman-GitHub Enterprise Integration
-
-Automate Postman API documentation workflow synchronized with your Git branching strategy. This integration creates and manages Postman collections that mirror your GitHub repository structure, enabling teams to maintain API documentation alongside code development.
+# Postman-GitHub Actions Reference
 
 ## Overview
 
