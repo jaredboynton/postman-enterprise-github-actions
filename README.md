@@ -4,8 +4,6 @@
 
 Github Actions-based automation for creating Postman collections when developers create repositories and branches, automatically creating and forking collections for branch-based development. 
 
-This solution, as-is, organizes workspaces with one per repository, enforces team-based validation to ensure only authorized users create resources, and manages the complete lifecycle with automatic cleanup of fork collections upon PR merge.
-
 - Automatically creates workspaces when repositories are initialized and establishes `[org] repo-name #main` collections as the source of truth. 
 - Auto-forks collections for `feature/*`, `bugfix/*`, and `hotfix/*` branches with smart detection that identifies branch patterns and forks from master automatically.
 - Triggers seamlessly on branch creation, push events, and PR merges while using GitHub context variables for email resolution. Stores workspace IDs in repository variables for persistence and supports manual workflow dispatch for ad-hoc creation needs.
