@@ -22,16 +22,16 @@ Requires GitHub Enterprise or GitHub.com repository access, a Postman Team or En
 
 1. **Copy Integration Files**
 
-   **Note**: The GitHub Actions workflows are stored in `github-reference/` to prevent automatic execution on this reference repository.
-   
-   ```bash
-   # First, rename the reference directory to activate GitHub Actions
-   mv github-reference .github
-   
-   # Copy the workflow and scripts to your repository  
-   cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
-   cp -r scripts/create-postman-resources.js <your-repo>/scripts/
-   ```
+ **Note**: The GitHub Actions workflows are stored in `github-reference/` to prevent automatic execution on this reference repository.
+ 
+ ```bash
+ # First, rename the reference directory to activate GitHub Actions
+ mv github-reference .github
+ 
+ # Copy the workflow and scripts to your repository  
+ cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
+ cp -r scripts/create-postman-resources.js <your-repo>/scripts/
+ ```
 
 2. **Configure GitHub Secrets**
 ```bash
