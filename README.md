@@ -164,28 +164,6 @@ jobs:
 | `resource_name` | Name of workspace/collection | Auto-generated |
 | `workspace_id` | Target workspace for collections | From variables |
 
-## Architecture
-
-### Workflow Logic
-```mermaid
-graph TD
-    A[GitHub Event] --> B{Event Type?}
-    B -->|Branch Create| C[Generate Collection Name]
-    B -->|PR Merge| D[Delete Fork Collection]
-    B -->|Manual| E[User Input]
-    
-    C --> F{User in Team?}
-    F -->|Yes| G[Create/Fork Collection]
-    F -->|No + Override| G
-    F -->|No| H[Warning Only]
-    
-    D --> I[Find Fork]
-    I --> J[Delete Collection]
-    
-    G --> K[Store IDs]
-    K --> L[Summary Report]
-```
-
 ### Authorization and User Validation
 
 - **API Key Protection** requires storing keys as encrypted GitHub secrets, using team-scoped rather than personal keys, and rotating keys periodically for security.
