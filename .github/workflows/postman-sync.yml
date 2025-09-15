@@ -197,15 +197,18 @@ jobs:
         node scripts/create-postman-resources.js workspace \
           "${{ steps.determine_action.outputs.resource_name }}"
 
-    - name: Store Workspace ID
+    - name: Store Workspace and Master Collection IDs
       if: steps.create_workspace.outputs.workspace_id
       run: |
-        # Store workspace ID as repository variable for future use
+        # Store workspace ID and master collection ID as repository variables for future use
         gh variable set POSTMAN_WORKSPACE_ID \
           --body "${{ steps.create_workspace.outputs.workspace_id }}"
-        
+        gh variable set POSTMAN_MASTER_COLLECTION_ID \
+          --body "${{ steps.create_workspace.outputs.master_collection_id }}"
+
         echo "Workspace ID stored as repository variable: POSTMAN_WORKSPACE_ID"
-        echo "Future collection creation will use this workspace automatically"
+        echo "Master Collection ID stored as repository variable: POSTMAN_MASTER_COLLECTION_ID"
+        echo "Future collection creation will use these IDs for efficient forking"
 
     - name: Ensure Workspace Exists
       if: steps.determine_action.outputs.action_type == 'ensure-workspace' && steps.validate_user.outputs.user_authorized == 'true'
@@ -223,14 +226,16 @@ jobs:
           node scripts/create-postman-resources.js workspace \
             "${{ steps.determine_action.outputs.resource_name }}"
           
-          # Store the workspace ID from script output
+          # Store the workspace ID and master collection ID from script output
           WORKSPACE_ID=$(grep 'workspace_id=' $GITHUB_OUTPUT | tail -1 | cut -d'=' -f2)
-          
-          # Set as repository variable for future use
+          MASTER_COLLECTION_ID=$(grep 'master_collection_id=' $GITHUB_OUTPUT | tail -1 | cut -d'=' -f2)
+
+          # Set as repository variables for future use
           gh variable set POSTMAN_WORKSPACE_ID --body "$WORKSPACE_ID"
-          
+          gh variable set POSTMAN_MASTER_COLLECTION_ID --body "$MASTER_COLLECTION_ID"
+
           echo "Created workspace: ${{ steps.determine_action.outputs.resource_name }} ($WORKSPACE_ID)"
-          echo "Created master collection: ${{ steps.determine_action.outputs.resource_name }} #main"
+          echo "Created master collection: ${{ steps.determine_action.outputs.resource_name }} #main ($MASTER_COLLECTION_ID)"
         else
           echo "Workspace already exists: $WORKSPACE_ID"
           echo "No action needed - workspace and master collection already set up"
@@ -257,14 +262,18 @@ jobs:
           # Create workspace
           node scripts/create-postman-resources.js workspace "$WORKSPACE_NAME"
           
-          # Store the workspace ID
+          # Store the workspace ID and master collection ID
           WORKSPACE_ID=$(grep 'workspace_id=' $GITHUB_OUTPUT | cut -d'=' -f2)
-          
-          # Set as repository variable for future use
+          MASTER_COLLECTION_ID=$(grep 'master_collection_id=' $GITHUB_OUTPUT | cut -d'=' -f2)
+
+          # Set as repository variables for future use
           gh variable set POSTMAN_WORKSPACE_ID --body "$WORKSPACE_ID"
-          
+          gh variable set POSTMAN_MASTER_COLLECTION_ID --body "$MASTER_COLLECTION_ID"
+
           echo "Auto-created workspace: $WORKSPACE_NAME ($WORKSPACE_ID)"
+          echo "Auto-created master collection ID: $MASTER_COLLECTION_ID"
           echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+          echo "master_collection_id=$MASTER_COLLECTION_ID" >> $GITHUB_OUTPUT
         else
           echo "Using existing workspace: $WORKSPACE_ID"
           echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
@@ -277,9 +286,21 @@ jobs:
         GITHUB_OUTPUT: ${{ github.output }}
       run: |
         # Smart collection creation - automatically forks if it's a branch
-        node scripts/create-postman-resources.js collection \
-          "${{ steps.determine_action.outputs.resource_name }}" \
-          "${{ steps.auto_workspace.outputs.workspace_id }}"
+        # Pass master collection ID for efficient forking (if available)
+        MASTER_COLLECTION_ID="${{ steps.auto_workspace.outputs.master_collection_id || vars.POSTMAN_MASTER_COLLECTION_ID || '' }}"
+
+        if [ -n "$MASTER_COLLECTION_ID" ]; then
+          echo "Using master collection ID for efficient forking: $MASTER_COLLECTION_ID"
+          node scripts/create-postman-resources.js collection \
+            "${{ steps.determine_action.outputs.resource_name }}" \
+            "${{ steps.auto_workspace.outputs.workspace_id }}" \
+            "$MASTER_COLLECTION_ID"
+        else
+          echo "No master collection ID available, will search for it"
+          node scripts/create-postman-resources.js collection \
+            "${{ steps.determine_action.outputs.resource_name }}" \
+            "${{ steps.auto_workspace.outputs.workspace_id }}"
+        fi
     
     - name: Merge and Cleanup Fork
       if: steps.determine_action.outputs.action_type == 'merge-cleanup' && steps.validate_user.outputs.user_authorized == 'true'

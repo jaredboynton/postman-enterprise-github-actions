@@ -83,17 +83,21 @@ class PostmanClient {
                 description: `Workspace for ${name}`
             }
         };
-        
+
         try {
             const response = await this.request('POST', '/workspaces', body);
             console.log('Workspace created successfully');
-            
+
             // Always create a master collection in the new workspace
             const workspace = response.data.workspace;
             const masterName = `${name} #main`;
-            await this.createCollection(masterName, workspace.id, `Master collection for ${name}`);
-            
-            return workspace;
+            const masterCollection = await this.createCollection(masterName, workspace.id, `Master collection for ${name}`);
+
+            // Return both workspace and master collection info
+            return {
+                workspace,
+                masterCollection
+            };
         } catch (error) {
             console.error('Failed to create workspace:', error.message);
             throw error;
@@ -171,8 +175,11 @@ class PostmanClient {
 
     /**
      * Intelligently create or fork a collection based on its name
+     * @param {string} name - Collection name
+     * @param {string} workspaceId - Workspace ID
+     * @param {string} masterCollectionId - Optional master collection ID for faster forking
      */
-    async smartCreateCollection(name, workspaceId) {
+    async smartCreateCollection(name, workspaceId, masterCollectionId = null) {
         // Parse the collection name to understand intent
         // Format: "[team] repo-name #branch" or "[team] repo-name-feature/branch"
         
@@ -199,14 +206,24 @@ class PostmanClient {
         // Extract base name (everything before #)
         const baseName = finalName.split('#')[0].trim();
         const branchPart = finalName.split('#')[1].trim();
-        
-        // Find the master collection to fork from
-        const masterCollection = await this.findMasterCollection(workspaceId, baseName);
-        
-        if (masterCollection) {
-            console.log(`Found master collection: ${masterCollection.name} (${masterCollection.id})`);
+
+        // Use provided master collection ID if available, otherwise find it
+        let masterCollectionIdToUse = masterCollectionId;
+
+        if (!masterCollectionIdToUse) {
+            console.log('No master collection ID provided, searching for it...');
+            const masterCollection = await this.findMasterCollection(workspaceId, baseName);
+            if (masterCollection) {
+                console.log(`Found master collection: ${masterCollection.name} (${masterCollection.id})`);
+                masterCollectionIdToUse = masterCollection.id;
+            }
+        } else {
+            console.log(`Using provided master collection ID: ${masterCollectionIdToUse}`);
+        }
+
+        if (masterCollectionIdToUse) {
             const fork = await this.forkCollection(
-                masterCollection.id,
+                masterCollectionIdToUse,
                 workspaceId,
                 finalName
             );
@@ -275,25 +292,27 @@ async function main() {
                     process.exit(1);
                 }
                 
-                const workspace = await client.createWorkspace(name);
-                console.log('Workspace ID:', workspace.id);
-                
+                const result = await client.createWorkspace(name);
+                console.log('Workspace ID:', result.workspace.id);
+                console.log('Master Collection ID:', result.masterCollection.id);
+
                 // Output for GitHub Actions
                 if (process.env.GITHUB_OUTPUT) {
                     const fs = require('fs');
-                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `workspace_id=${workspace.id}\n`);
+                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `workspace_id=${result.workspace.id}\n`);
+                    fs.appendFileSync(process.env.GITHUB_OUTPUT, `master_collection_id=${result.masterCollection.id}\n`);
                 }
                 break;
             }
             
             case 'collection': {
-                const [name, workspaceId] = args;
+                const [name, workspaceId, masterCollectionId] = args;
                 if (!name || !workspaceId) {
                     console.error('Error: Collection name and workspace ID are required');
                     process.exit(1);
                 }
-                
-                const collection = await client.smartCreateCollection(name, workspaceId);
+
+                const collection = await client.smartCreateCollection(name, workspaceId, masterCollectionId);
                 console.log('Collection ID:', collection.id);
                 console.log('Collection UID:', collection.uid);
                 
