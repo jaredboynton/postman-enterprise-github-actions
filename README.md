@@ -2,7 +2,7 @@
 
 ## What This Does
 
-Automates Postman workspace and collection management to mirror your GitHub repository structure. Push to main creates a workspace. Create a feature branch, get a forked collection. Merge the PR, the fork disappears. Zero manual collection management.
+Automates Postman workspace and collection management to mirror your GitHub repository structure. Any Git activity automatically creates the workspace if it doesn't exist. Create a feature branch, get a forked collection. Merge the PR, the fork disappears. Zero manual collection management.
 
 Your API documentation and testing assets follow the same branching strategy as your code. Feature branches get isolated collections for testing without affecting production documentation. The structure stays organized automatically while you handle the actual collection content.
 
@@ -10,7 +10,7 @@ For teams just getting Postman Enterprise, this means you can scaffold your enti
 
 ## How It Works
 
-The integration operates on a simple principle: GitHub events trigger Postman API calls. Push to main creates a workspace with a master collection. Create a feature branch, get a forked collection. Merge the PR, the fork disappears.
+The integration operates on a simple principle: GitHub events trigger Postman API calls. The system auto-creates workspaces with master collections whenever they're needed. Create a feature branch, get a forked collection. Merge the PR, the fork disappears.
 
 The naming convention keeps everything organized: workspaces are `[org] repo-name`, master collections are `[org] repo-name #main`, and branch collections are `[org] repo-name #feature-description`. This makes it immediately obvious what you're looking at in Postman, even with dozens of repositories and hundreds of collections.
 
