@@ -26,7 +26,7 @@ Copy the workflow and script to your repository:
 
 ```bash
 # Copy files to your repo
-cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
+cp -r .github/workflows/postman-sync-repo.yml <your-repo>/.github/workflows/
 cp -r scripts/create-postman-resources.js <your-repo>/scripts/
 ```
 
@@ -83,34 +83,45 @@ Sometimes you need to create collections outside the normal flow:
 
 ```bash
 # Create a custom collection
-gh workflow run postman-sync.yml \
+gh workflow run postman-sync-repo.yml \
   -f action=create-collection \
   -f resource_name="Custom Integration Tests"
 
 # Force workspace creation with custom name
-gh workflow run postman-sync.yml \
+gh workflow run postman-sync-repo.yml \
   -f action=create-workspace \
   -f resource_name="Special Project Workspace"
 ```
 
-## Enterprise Deployment
+## Organization-Level Setup
 
-For organization-wide rollout, create a reusable workflow in your `.github` repository:
+Deploy Postman integration across your entire GitHub organization with centralized management. This approach eliminates the need to copy scripts to each repository.
 
-```yaml
-# org/.github/.github/workflows/postman-sync-reusable.yml
-name: Postman Sync (Reusable)
-on:
-  workflow_call:
-    secrets:
-      POSTMAN_API_KEY:
-        required: true
+### Step 1: Deploy the Org Workflow
+
+Copy `postman-sync-org.yml` to your organization's `.github` repository:
+
+```bash
+# In your org's .github repository
+cp postman-sync-org.yml .github/workflows/
 ```
 
-Then reference it in each repository:
+This workflow automatically downloads the required script from postman-cs/postman-scaffolding, so individual repositories don't need to maintain their own copies.
+
+### Step 2: Configure Organization Secret
+
+Set your Postman API key at the organization level:
+
+```bash
+gh secret set POSTMAN_API_KEY --org your-org-name --body "your-postman-api-key"
+```
+
+### Step 3: Enable in Repositories
+
+Add this minimal workflow to any repository that needs Postman integration:
 
 ```yaml
-# repo/.github/workflows/postman.yml
+# .github/workflows/postman.yml
 name: Postman Integration
 on:
   push:
@@ -121,11 +132,26 @@ on:
 
 jobs:
   sync:
-    uses: org/.github/.github/workflows/postman-sync-reusable.yml@main
+    uses: your-org/.github/.github/workflows/postman-sync-org.yml@main
     secrets: inherit
 ```
 
-This approach lets you manage the integration logic centrally while giving repositories the flexibility to customize triggers.
+### Step 4: Initial Setup (First Run Only)
+
+The first push to main/master creates your workspace and master collection. Due to GitHub Actions security boundaries, you'll need to manually store the generated IDs:
+
+1. Check the workflow run output for the created IDs:
+   ```bash
+   gh run view --log | grep -E "(workspace_id|master_collection_id)"
+   ```
+
+2. Store them as repository variables:
+   ```bash
+   gh variable set POSTMAN_WORKSPACE_ID --body "<workspace-id>"
+   gh variable set POSTMAN_MASTER_COLLECTION_ID --body "<collection-id>"
+   ```
+
+This one-time setup enables efficient collection forking for all future branches. The org workflow handles everything else automatically.
 
 ## How User Validation Works
 
@@ -135,12 +161,14 @@ This prevents random contributors from creating collections in your workspace wh
 
 ## Stored Variables
 
-The workflow automatically stores these as GitHub repository variables:
+The system uses GitHub repository variables to maintain workspace context:
 
-- `POSTMAN_WORKSPACE_ID` - The workspace UUID, set after first workspace creation
+- `POSTMAN_WORKSPACE_ID` - The workspace UUID for this repository
 - `POSTMAN_MASTER_COLLECTION_ID` - The master collection UUID for efficient forking
 
-These persist across workflow runs so the system knows where to create new collections and what to fork from.
+**For Repository-Level Setup**: These are automatically stored after workspace creation.
+
+**For Organization-Level Setup**: Due to cross-repository permission boundaries, these must be manually stored after the first workflow run (see Organization-Level Setup, Step 4). This is a one-time configuration per repository.
 
 ## Troubleshooting
 
@@ -157,7 +185,7 @@ To debug issues:
 gh variable list
 
 # View recent workflow runs
-gh run list --workflow=postman-sync.yml
+gh run list --workflow=postman-sync-repo.yml
 
 # Test Postman API access
 curl -X GET https://api.getpostman.com/users \

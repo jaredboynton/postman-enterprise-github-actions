@@ -1,63 +1,59 @@
-name: Postman API Sync
+name: Postman Sync for Organizations
 
 on:
-  # Trigger on branch creation and push to feature/bugfix/hotfix branches
-  # Also trigger on main for initial workspace setup
-  push:
-    branches:
-      - 'main'
-      - 'master'
-      - 'feature/**'
-      - 'bugfix/**'
-      - 'hotfix/**'
-  
-  create:
-    # Triggered when a branch or tag is created
-  
-  # Trigger on pull request merge for fork cleanup
-  pull_request:
-    types: [closed]
-    
-  # Manual trigger for workspace/collection creation
-  workflow_dispatch:
+  workflow_call:
     inputs:
       action:
-        description: 'Action to perform'
-        required: true
-        type: choice
-        options:
-          - create-workspace
-          - create-collection
+        description: 'Action to perform (create-workspace or create-collection)'
+        type: string
+        required: false
       resource_name:
         description: 'Name of the workspace or collection'
+        type: string
+        required: false
+    secrets:
+      POSTMAN_API_KEY:
         required: true
-        type: string
-      workspace_id:
-        description: 'Workspace ID (for collection creation)'
-        required: false
-        type: string
-      description:
-        description: 'Description for the resource'
-        required: false
-        type: string
-        default: ''
+        description: 'Postman API Key (set at org level)'
 
 jobs:
   postman-sync:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write  # Required for gh variable set
-    
+      actions: write  # Required for gh variable set in calling repo
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v3
       with:
         node-version: '18'
-    
+
+    - name: Download Postman Scripts
+      run: |
+        # Download the script from the postman-cs scaffolding repo
+        mkdir -p scripts
+
+        # Download with error handling
+        echo "Downloading Postman resource creation script..."
+        if ! curl -fsSL -o scripts/create-postman-resources.js \
+          https://raw.githubusercontent.com/postman-cs/postman-scaffolding/master/scripts/create-postman-resources.js; then
+          echo "ERROR: Failed to download script from postman-cs/postman-scaffolding"
+          echo "Please ensure the repository is accessible"
+          exit 1
+        fi
+
+        # Verify the script was downloaded
+        if [ ! -f scripts/create-postman-resources.js ]; then
+          echo "ERROR: Script download appeared successful but file not found"
+          exit 1
+        fi
+
+        echo "Script downloaded successfully"
+
     - name: Determine action type
       id: determine_action
       run: |
@@ -66,7 +62,7 @@ jobs:
         REPO="${{ github.repository }}"
         ORG_OR_USER=$(echo $REPO | cut -d'/' -f1)
         REPO_NAME=$(echo $REPO | cut -d'/' -f2)
-        
+
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           echo "action_type=${{ inputs.action }}" >> $GITHUB_OUTPUT
           if [ "${{ inputs.action }}" = "create-workspace" ]; then
@@ -116,14 +112,14 @@ jobs:
         else
           echo "action_type=skip" >> $GITHUB_OUTPUT
         fi
-    
+
     - name: Get User Email
       if: steps.determine_action.outputs.action_type != 'skip'
       id: get_email
       run: |
         # GitHub Enterprise provides sender email in the event context
         USER_EMAIL="${{ github.event.sender.email }}"
-        
+
         # Fallback for specific event types if sender.email is not available
         if [ -z "$USER_EMAIL" ]; then
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -132,7 +128,7 @@ jobs:
             USER_EMAIL="${{ github.event.pull_request.user.email }}"
           fi
         fi
-        
+
         echo "User: ${{ github.actor }}"
         echo "Email: $USER_EMAIL"
         echo "user_email=$USER_EMAIL" >> $GITHUB_OUTPUT
@@ -183,32 +179,6 @@ jobs:
         echo "To enable Postman sync:"
         echo "1. Add user to Postman team for automatic sync, or"
         echo "2. Set repository variable POSTMAN_ALLOW_ALL_USERS=true to bypass validation"
-        echo ""
-        echo "Proceeding with workflow..."
-
-    - name: Create Postman Workspace
-      if: steps.determine_action.outputs.action_type == 'create-workspace' && steps.validate_user.outputs.user_authorized == 'true'
-      id: create_workspace
-      env:
-        POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
-        GITHUB_OUTPUT: ${{ github.output }}
-      run: |
-        # Create workspace (automatically creates #main collection)
-        node scripts/create-postman-resources.js workspace \
-          "${{ steps.determine_action.outputs.resource_name }}"
-
-    - name: Store Workspace and Master Collection IDs
-      if: steps.create_workspace.outputs.workspace_id
-      run: |
-        # Store workspace ID and master collection ID as repository variables for future use
-        gh variable set POSTMAN_WORKSPACE_ID \
-          --body "${{ steps.create_workspace.outputs.workspace_id }}"
-        gh variable set POSTMAN_MASTER_COLLECTION_ID \
-          --body "${{ steps.create_workspace.outputs.master_collection_id }}"
-
-        echo "Workspace ID stored as repository variable: POSTMAN_WORKSPACE_ID"
-        echo "Master Collection ID stored as repository variable: POSTMAN_MASTER_COLLECTION_ID"
-        echo "Future collection creation will use these IDs for efficient forking"
 
     - name: Ensure Workspace Exists
       if: steps.determine_action.outputs.action_type == 'ensure-workspace' && steps.validate_user.outputs.user_authorized == 'true'
@@ -218,29 +188,35 @@ jobs:
         GITHUB_OUTPUT: ${{ github.output }}
       run: |
         WORKSPACE_ID="${{ vars.POSTMAN_WORKSPACE_ID }}"
-        
+
         if [ -z "$WORKSPACE_ID" ]; then
           echo "No workspace found for this repository - creating workspace + master collection"
-          
+
           # Create workspace (automatically creates #main collection)
           node scripts/create-postman-resources.js workspace \
             "${{ steps.determine_action.outputs.resource_name }}"
-          
-          # Store the workspace ID and master collection ID from script output
+
+          # Extract IDs from output
           WORKSPACE_ID=$(grep 'workspace_id=' $GITHUB_OUTPUT | tail -1 | cut -d'=' -f2)
           MASTER_COLLECTION_ID=$(grep 'master_collection_id=' $GITHUB_OUTPUT | tail -1 | cut -d'=' -f2)
 
-          # Set as repository variables for future use
-          gh variable set POSTMAN_WORKSPACE_ID --body "$WORKSPACE_ID"
-          gh variable set POSTMAN_MASTER_COLLECTION_ID --body "$MASTER_COLLECTION_ID"
-
           echo "Created workspace: ${{ steps.determine_action.outputs.resource_name }} ($WORKSPACE_ID)"
           echo "Created master collection: ${{ steps.determine_action.outputs.resource_name }} #main ($MASTER_COLLECTION_ID)"
+
+          # Output for calling workflow to handle
+          echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+          echo "master_collection_id=$MASTER_COLLECTION_ID" >> $GITHUB_OUTPUT
+
+          # Note: The calling repository needs to store these as variables
+          echo ""
+          echo "IMPORTANT: Store these IDs as repository variables:"
+          echo "  gh variable set POSTMAN_WORKSPACE_ID --body \"$WORKSPACE_ID\""
+          echo "  gh variable set POSTMAN_MASTER_COLLECTION_ID --body \"$MASTER_COLLECTION_ID\""
         else
           echo "Workspace already exists: $WORKSPACE_ID"
           echo "No action needed - workspace and master collection already set up"
         fi
-    
+
     - name: Auto-Create Workspace If Needed
       if: steps.determine_action.outputs.action_type == 'create-collection' && steps.validate_user.outputs.user_authorized == 'true'
       id: auto_workspace
@@ -248,35 +224,41 @@ jobs:
         POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
         GITHUB_OUTPUT: ${{ github.output }}
       run: |
-        WORKSPACE_ID="${{ inputs.workspace_id || vars.POSTMAN_WORKSPACE_ID }}"
-        
+        WORKSPACE_ID="${{ vars.POSTMAN_WORKSPACE_ID }}"
+
         if [ -z "$WORKSPACE_ID" ]; then
           echo "No workspace found - auto-creating workspace for this repository"
-          
+
           # Extract repo info for workspace name
           REPO="${{ github.repository }}"
           ORG_OR_USER=$(echo $REPO | cut -d'/' -f1)
           REPO_NAME=$(echo $REPO | cut -d'/' -f2)
           WORKSPACE_NAME="${ORG_OR_USER} ${REPO_NAME}"
-          
+
           # Create workspace
           node scripts/create-postman-resources.js workspace "$WORKSPACE_NAME"
-          
-          # Store the workspace ID and master collection ID
+
+          # Extract IDs from output
           WORKSPACE_ID=$(grep 'workspace_id=' $GITHUB_OUTPUT | cut -d'=' -f2)
           MASTER_COLLECTION_ID=$(grep 'master_collection_id=' $GITHUB_OUTPUT | cut -d'=' -f2)
-
-          # Set as repository variables for future use
-          gh variable set POSTMAN_WORKSPACE_ID --body "$WORKSPACE_ID"
-          gh variable set POSTMAN_MASTER_COLLECTION_ID --body "$MASTER_COLLECTION_ID"
 
           echo "Auto-created workspace: $WORKSPACE_NAME ($WORKSPACE_ID)"
           echo "Auto-created master collection ID: $MASTER_COLLECTION_ID"
           echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
           echo "master_collection_id=$MASTER_COLLECTION_ID" >> $GITHUB_OUTPUT
+
+          # Note: The calling repository needs to store these as variables
+          echo ""
+          echo "IMPORTANT: Store these IDs as repository variables:"
+          echo "  gh variable set POSTMAN_WORKSPACE_ID --body \"$WORKSPACE_ID\""
+          echo "  gh variable set POSTMAN_MASTER_COLLECTION_ID --body \"$MASTER_COLLECTION_ID\""
         else
           echo "Using existing workspace: $WORKSPACE_ID"
           echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+          # Also pass through master collection ID if available
+          if [ -n "${{ vars.POSTMAN_MASTER_COLLECTION_ID }}" ]; then
+            echo "master_collection_id=${{ vars.POSTMAN_MASTER_COLLECTION_ID }}" >> $GITHUB_OUTPUT
+          fi
         fi
 
     - name: Create Postman Collection
@@ -301,7 +283,7 @@ jobs:
             "${{ steps.determine_action.outputs.resource_name }}" \
             "${{ steps.auto_workspace.outputs.workspace_id }}"
         fi
-    
+
     - name: Merge and Cleanup Fork
       if: steps.determine_action.outputs.action_type == 'merge-cleanup' && steps.validate_user.outputs.user_authorized == 'true'
       env:
@@ -310,22 +292,22 @@ jobs:
       run: |
         # Find and delete the fork collection after PR merge
         COLLECTION_NAME="${{ steps.determine_action.outputs.resource_name }}"
-        
+
         echo "Looking for fork collection: $COLLECTION_NAME"
-        
+
         # Get all collections in the workspace
         WORKSPACE_ID="${{ env.POSTMAN_WORKSPACE_ID }}"
-        
+
         if [ -z "$WORKSPACE_ID" ]; then
           echo "No workspace ID found - cannot cleanup fork"
           exit 0
         fi
-        
+
         # Get workspace details and find the collection
         response=$(curl -s -X GET \
           "https://api.getpostman.com/workspaces/${WORKSPACE_ID}" \
           -H "X-API-Key: ${{ env.POSTMAN_API_KEY }}")
-        
+
         # Extract collection matching the fork name
         collection_id=$(echo "$response" | python3 -c "
         import sys, json
@@ -337,22 +319,20 @@ jobs:
                 print(col.get('id', ''))
                 break
         ")
-        
+
         if [ -n "$collection_id" ]; then
           echo "Found fork collection: $collection_id"
-          
+
           # Delete the fork collection
           curl -X DELETE \
             "https://api.getpostman.com/collections/${collection_id}" \
             -H "X-API-Key: ${{ env.POSTMAN_API_KEY }}"
-          
+
           echo "Fork collection deleted after successful merge"
         else
           echo "Fork collection not found (may have been manually deleted)"
         fi
-        
-        echo "Note: In production, consider implementing full PR-to-Postman sync for the main collection"
-    
+
     - name: Create Summary
       if: steps.determine_action.outputs.action_type != 'skip'
       run: |
@@ -360,26 +340,18 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Action:** ${{ steps.determine_action.outputs.action_type }}" >> $GITHUB_STEP_SUMMARY
         echo "**Resource:** ${{ steps.determine_action.outputs.resource_name }}" >> $GITHUB_STEP_SUMMARY
-        
+
         if [ "${{ steps.validate_user.outputs.user_authorized }}" = "false" ]; then
           echo "**Status:** SKIPPED - User not in Postman team" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Authorization Details" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.validate_user.outputs.validation_message }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "To enable automatic Postman sync:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Add user to Postman team, or" >> $GITHUB_STEP_SUMMARY
-          echo "2. Set \`POSTMAN_ALLOW_ALL_USERS=true\` repository variable" >> $GITHUB_STEP_SUMMARY
         else
-          echo "**Status:** SUCCESS - ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          
-          if [ "${{ steps.determine_action.outputs.action_type }}" = "create-workspace" ] && [ -n "${{ steps.create_workspace.outputs.workspace_id }}" ]; then
-            echo "**Workspace ID:** ${{ steps.create_workspace.outputs.workspace_id }}" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.determine_action.outputs.action_type }}" = "ensure-workspace" ]; then
-            echo "**Workspace Setup:** Complete - Ready for branch collections" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.determine_action.outputs.action_type }}" = "create-collection" ] && [ -n "${{ steps.create_collection.outputs.collection_id }}" ]; then
-            echo "**Collection ID:** ${{ steps.create_collection.outputs.collection_id }}" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ steps.determine_action.outputs.action_type }}" = "merge-cleanup" ]; then
-            echo "**Fork Cleanup:** Collection deleted after merge" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** SUCCESS" >> $GITHUB_STEP_SUMMARY
+
+          if [ -n "${{ steps.ensure_workspace.outputs.workspace_id }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Created Resources" >> $GITHUB_STEP_SUMMARY
+            echo "- Workspace ID: \`${{ steps.ensure_workspace.outputs.workspace_id }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Master Collection ID: \`${{ steps.ensure_workspace.outputs.master_collection_id }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next Step:** Store these as repository variables (see workflow logs)" >> $GITHUB_STEP_SUMMARY
           fi
         fi
