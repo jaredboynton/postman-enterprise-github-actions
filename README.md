@@ -1,124 +1,107 @@
-# Postman Enterprise - GitHub Actions Reference
+# Postman Scaffolding - GitHub to Postman Automation
 
-## Overview
+## What This Solves
 
-Github Actions-based automation for creating Postman collections when developers create repositories and branches, automatically creating and forking collections for branch-based development. 
+I built this because enterprise customers kept asking the same question: "How do we keep our Postman collections in sync with our Git branches?" The answer was always manual processes that nobody followed. So I automated the entire thing.
 
-- Automatically creates workspaces when repositories are initialized and establishes `[org] repo-name #main` collections as the source of truth. 
-- Auto-forks collections for `feature/*`, `bugfix/*`, and `hotfix/*` branches with smart detection that identifies branch patterns and forks from master automatically.
-- Triggers seamlessly on branch creation, push events, and PR merges while using GitHub context variables for email resolution. Stores workspace IDs in repository variables for persistence and supports manual workflow dispatch for ad-hoc creation needs.
-- Consistent, deterministic naming across the organization follows the pattern: `[organization] repository-name` for workspaces, `[organization] repository-name #main` for master collections, and `[organization] repository-name #feature-description` for branch-specific forks.
-- Integration with the Postman API allows for automated resource creation for licensed Postman team members, yet allows unlicensed users to continue workflows. This approach balances automation for team members with manual overrides for external contributors and administrators.
+This integration creates Postman workspaces and collections that mirror your GitHub repository structure automatically. When you create a repo, you get a workspace. When you create a branch, you get a forked collection. When you merge a PR, the fork gets cleaned up. No manual steps, no forgotten collections, no workspace sprawl.
 
-### Fork Lifecycle Management
-- Automatic fork deletion when pull requests are merged. This keeps workspaces clean and organized, assets easy-to-find, and reduces clutter from temporary branch collections.
+The real value here is that your API documentation and testing assets now follow the same branching strategy as your code. Feature branches get isolated collections that can be tested without affecting production documentation. When the feature merges, so does the collection content (though that part you still handle manually - this just manages the structure).
+
+## How It Works
+
+The integration operates on a simple principle: GitHub events trigger Postman API calls. Push to main creates a workspace with a master collection. Create a feature branch, get a forked collection. Merge the PR, the fork disappears.
+
+The naming convention keeps everything organized: workspaces are `[org] repo-name`, master collections are `[org] repo-name #main`, and branch collections are `[org] repo-name #feature-description`. This makes it immediately obvious what you're looking at in Postman, even with dozens of repositories and hundreds of collections.
+
+For security, it validates users against your Postman team membership. If someone's not on the team, they can still push code but won't trigger Postman resource creation. You can override this with a variable if you want to allow everyone (useful for open source or just-in-time licensing).
 
 ## Installation
 
-### Prerequisites
-Requires GitHub Enterprise or GitHub.com repository access, a Postman Team or Enterprise account, and repository admin permissions for secrets configuration.
+First, you need a Postman Team or Enterprise account and a repository where you have admin access. The workflow files are in `github-reference/` to prevent them from running on this reference repo.
 
-### Setup Steps
+### Basic Setup
 
-1. **Copy Integration Files**
+Copy the workflow and script to your repository:
 
- **Note**: The GitHub Actions workflows are stored in `github-reference/` to prevent automatic execution on this reference repository.
- 
- ```bash
- # First, rename the reference directory to activate GitHub Actions
- mv github-reference .github
- 
- # Copy the workflow and scripts to your repository  
- cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
- cp -r scripts/create-postman-resources.js <your-repo>/scripts/
- ```
-
-2. **Configure GitHub Secrets**
 ```bash
-# Required: Your Postman API key
+# Rename the reference directory to activate GitHub Actions
+mv github-reference .github
+
+# Copy files to your repo
+cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
+cp -r scripts/create-postman-resources.js <your-repo>/scripts/
+```
+
+Set up your Postman API key as a GitHub secret:
+
+```bash
 gh secret set POSTMAN_API_KEY --body "your-postman-api-key"
-
-# Optional: GitHub token (improves email resolution)
-gh secret set GITHUB_TOKEN --body "your-github-token"
 ```
 
-3. **Configure Repository Variables** (Optional)
+That's it for basic setup. The first push to main will create your workspace and master collection automatically.
+
+### Optional Configuration
+
+If you want all users to create resources regardless of Postman team membership:
+
 ```bash
-# Allow all users to create resources (bypasses team check)
-gh variable set POSTMAN_ALLOW_ALL_USERS --body "false"
+gh variable set POSTMAN_ALLOW_ALL_USERS --body "true"
 ```
 
-4. **Workspace Setup** (Optional)
+If you want to use an existing workspace instead of auto-creating one:
 
-**Default**: Workspace auto-created when first branch is pushed
-
-**Override** (Optional): Use existing workspace instead of auto-creating
 ```bash
-# Point to existing workspace (if you want to share across repos)
 gh variable set POSTMAN_WORKSPACE_ID --body "existing-workspace-uuid"
-
-# Useful for:
-# - Multiple repositories in one workspace
-# - Existing team workspace
-# - Shared documentation space
+gh variable set POSTMAN_MASTER_COLLECTION_ID --body "master-collection-uuid"
 ```
 
-## Usage
+The master collection ID storage is an optimization I added - it eliminates API calls to search for the master collection every time you create a branch. The system works without it but runs faster with it.
 
-### Automatic Triggers
+## Usage Examples
 
-The workflow automatically runs when:
+### Standard Development Flow
 
-1. **Repository Initialization**: Push to main/master creates workspace + master collection
+Your normal development workflow just works:
+
 ```bash
+# Initialize repository - creates workspace and master collection
 git push origin main
-# Auto-creates: [org] repo workspace  
-# Auto-creates: [org] repo #main collection
-# Ready for feature branch workflow
+
+# Start feature work - creates forked collection
+git checkout -b feature/new-endpoint
+git push origin feature/new-endpoint
+
+# More branches - more forks
+git checkout -b bugfix/auth-issue
+git push origin bugfix/auth-issue
+
+# Merge PR - fork gets deleted automatically
+# The collection content merge is still manual in Postman
 ```
 
-2. **Feature Branch Creation**: Auto-creates fork collection from master
-```bash
-git checkout -b feature/new-api
-git push origin feature/new-api
-# Auto-creates: [org] repo #feature-new-api (forked from #main)
-```
+### Manual Operations
 
-3. **Subsequent Branches**: Creates more fork collections from master
-```bash
-git checkout -b feature/another-api  
-git push origin feature/another-api
-# Creates: [org] repo #feature-another-api (forked from #main)
-```
-
-4. **Pull Request Merge**: Cleans up fork collection
-```bash
-# When PR is merged to main
-# Deletes: [org] repo #feature-new-api collection
-```
-
-### Manual Triggers
-
-Use GitHub Actions UI or CLI for manual operations:
+Sometimes you need to create collections outside the normal flow:
 
 ```bash
-# Create custom collection in workspace
+# Create a custom collection
 gh workflow run postman-sync.yml \
   -f action=create-collection \
-  -f resource_name="Custom Collection Name"
+  -f resource_name="Custom Integration Tests"
 
-# Create workspace manually (only if you want custom naming)
+# Force workspace creation with custom name
 gh workflow run postman-sync.yml \
-  -f action=create-workspace
+  -f action=create-workspace \
+  -f resource_name="Special Project Workspace"
 ```
 
 ## Enterprise Deployment
 
-### Organization-Wide Rollout
+For organization-wide rollout, create a reusable workflow in your `.github` repository:
 
-1. **Create Reusable Workflow**
 ```yaml
-# .github/workflows/postman-sync-reusable.yml
+# org/.github/.github/workflows/postman-sync-reusable.yml
 name: Postman Sync (Reusable)
 on:
   workflow_call:
@@ -127,13 +110,14 @@ on:
         required: true
 ```
 
-2. **Reference in Repositories**
+Then reference it in each repository:
+
 ```yaml
-# Individual repo's .github/workflows/postman.yml
+# repo/.github/workflows/postman.yml
 name: Postman Integration
 on:
   push:
-    branches: [feature/**, bugfix/**, hotfix/**]
+    branches: [main, master, 'feature/**', 'bugfix/**', 'hotfix/**']
   create:
   pull_request:
     types: [closed]
@@ -144,65 +128,58 @@ jobs:
     secrets: inherit
 ```
 
-### Options
+This approach lets you manage the integration logic centrally while giving repositories the flexibility to customize triggers.
 
-- Set `POSTMAN_ALLOW_ALL_USERS=true` in repository variables to allow all GitHub users to create Postman resources. This approach works well for teams with just-in-time provisioning of Postman licenses.
+## How User Validation Works
 
-## Configuration Reference
+The system checks if the GitHub user's email exists in your Postman team. It tries to get the email from GitHub Enterprise context first, then falls back to commit author email. If the user isn't found, the workflow continues but skips Postman resource creation.
 
-### Environment Variables
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `POSTMAN_API_KEY` | Yes | Service Account/Admin Postman API key with workspace/collection permissions |
-| `POSTMAN_WORKSPACE_ID` | Yes | Workspace UUID - auto-stored after workspace creation OR manually set for existing workspace |
-| `POSTMAN_ALLOW_ALL_USERS` | No | Set to `true` to bypass team membership validation |
+This prevents random contributors from creating collections in your workspace while still allowing them to contribute code. If you're using just-in-time provisioning or want to allow everyone, set `POSTMAN_ALLOW_ALL_USERS=true`.
 
-### Workflow Inputs
-| Input | Description | Default |
-|-------|-------------|---------|
-| `action` | `create-workspace` or `create-collection` | Required |
-| `resource_name` | Name of workspace/collection | Auto-generated |
-| `workspace_id` | Target workspace for collections | From variables |
+## Stored Variables
 
-### Authorization and User Validation
+The workflow automatically stores these as GitHub repository variables:
 
-- **API Key Protection** requires storing keys as encrypted GitHub secrets, using team-scoped rather than personal keys, and rotating keys periodically for security.
-- **Email Validation** uses GitHub Enterprise context for email resolution with fallback to commit author for push events, avoiding any hardcoded email mappings that could become stale.
-- **Workspace Isolation** maintains one workspace per repository with team-level access control, preventing any cross-repository collection access that could lead to data leakage.
+- `POSTMAN_WORKSPACE_ID` - The workspace UUID, set after first workspace creation
+- `POSTMAN_MASTER_COLLECTION_ID` - The master collection UUID for efficient forking
+
+These persist across workflow runs so the system knows where to create new collections and what to fork from.
 
 ## Troubleshooting
 
-**Issue**: User not found in Postman team
-```
-Solution: Either add user to Postman team or set POSTMAN_ALLOW_ALL_USERS=true
-```
+When users can't create resources, it's usually because they're not in the Postman team. Either add them to the team or set `POSTMAN_ALLOW_ALL_USERS=true`.
 
-**Issue**: No workspace ID for collection creation
-```
-Solution: This should auto-resolve on first branch push. If not:
+If collection creation fails with "no workspace ID", push to main first to trigger workspace creation. Or manually set the workspace ID if you want to use an existing one.
 
-# Check if POSTMAN_WORKSPACE_ID variable exists
-gh variable list
+Fork cleanup failures during PR merge are harmless - the collection was probably already deleted manually.
 
-# If you want to use existing workspace instead of auto-creating:
-gh variable set POSTMAN_WORKSPACE_ID --body "workspace-uuid"
-```
-
-**Issue**: Fork collection not found during cleanup
-```
-Solution: Collection may have been manually deleted - this is safe to ignore
-```
-
-### Debug Commands
+To debug issues:
 
 ```bash
-# Check current variables
+# Check stored variables
 gh variable list
 
-# View workflow runs
+# View recent workflow runs
 gh run list --workflow=postman-sync.yml
 
-# Check Postman team members (via API)
+# Test Postman API access
 curl -X GET https://api.getpostman.com/users \
   -H "X-API-Key: $POSTMAN_API_KEY"
 ```
+
+## Technical Details
+
+The Node.js script handles all Postman API interactions. It creates workspaces with master collections, intelligently forks collections based on naming patterns, and manages the full lifecycle. The GitHub workflow determines what action to take based on the event type and branch name, then calls the appropriate script function.
+
+The master collection ID optimization means branch creation goes from three API calls (get workspace, search collections, fork) to just one (fork with known ID). This matters when you have teams creating dozens of branches per day.
+
+## Why I Built This
+
+After implementing manual processes at multiple enterprises and watching them fail, I realized the problem wasn't the process - it was expecting humans to remember to do repetitive tasks. Automation solves this completely. Now teams get organized Postman workspaces that mirror their Git structure without thinking about it.
+
+This is part of my broader postman-cs toolkit - solutions that fill the gaps between what Postman provides and what enterprises actually need to operate at scale. Most of the heavy lifting is done for you here. Just configure your API key and let it run.
+
+---
+
+Built by Jared Boynton - Head of Customer Success Engineering @ Postman
+Part of the postman-cs open source toolkit
