@@ -6,6 +6,8 @@ Automates Postman workspace and collection management to mirror your GitHub repo
 
 Your API documentation and testing assets follow the same branching strategy as your code. Feature branches get isolated collections for testing without affecting production documentation. The structure stays organized automatically while you handle the actual collection content.
 
+For teams just getting Postman Enterprise, this means you can scaffold your entire organization retroactively. Run the propagator once and watch it create organized workspaces for every repository, transforming an empty Postman instance into a structured environment that mirrors your existing codebase.
+
 ## How It Works
 
 The integration operates on a simple principle: GitHub events trigger Postman API calls. Push to main creates a workspace with a master collection. Create a feature branch, get a forked collection. Merge the PR, the fork disappears.
@@ -90,11 +92,15 @@ gh workflow run postman-sync-repo.yml \
 
 ## Organization-Level Setup
 
+Perfect for teams just getting Postman Enterprise who want to scaffold out their entire instance retroactively. The propagator will scan your existing repositories and create organized workspaces automatically.
+
 Two ways to deploy this across your organization:
 
 ### Automated Propagation (Recommended)
 
 This approach automatically creates PRs to add the Postman workflow to all repositories in your organization. New repos get the workflow within 24 hours, existing repos get a one-time PR.
+
+The retroactive setup is particularly powerful for new Enterprise customers - you can take an empty Postman instance and have organized workspaces for your entire codebase within a few hours. Each repository becomes a workspace with proper naming conventions, and you get the full branching workflow immediately.
 
 #### Setup
 
@@ -125,7 +131,7 @@ The propagator runs daily at 2 AM UTC and:
 - Skips repos that already have the workflow or an open PR
 - Provides a summary of actions taken
 
-You can also run it manually with dry-run mode or target specific repositories.
+You can also run it manually with dry-run mode or target specific repositories. For immediate retroactive setup, run it manually after initial configuration to scaffold your entire organization at once.
 
 ### Manual Setup
 
@@ -231,6 +237,8 @@ When users can't create resources, it's usually because they're not in the Postm
 If collection creation fails with "no workspace ID", push to main first to trigger workspace creation. Or manually set the workspace ID if you want to use an existing one.
 
 Fork cleanup failures during PR merge are harmless - the collection was probably already deleted manually.
+
+For retroactive Enterprise setup, expect the initial propagation to create dozens or hundreds of PRs across your organization. Teams can merge these at their own pace - the Postman integration activates automatically after the first push to main following the merge.
 
 To debug issues:
 
