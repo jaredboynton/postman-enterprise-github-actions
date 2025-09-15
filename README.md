@@ -12,6 +12,24 @@ For teams just getting Postman Enterprise, this means you can scaffold your enti
 
 The integration operates on a simple principle: GitHub events trigger Postman API calls. The system auto-creates workspaces with master collections whenever they're needed. Create a feature branch, get a forked collection. Merge the PR, the fork disappears.
 
+```
+GitHub Event Flow → Postman Actions
+
+Repository Setup:
+git push origin main ──────────────→ [Auto-create workspace + master collection]
+                                     │
+                                     └── Store workspace/collection IDs
+
+Feature Development:
+git checkout -b feature/auth ─────────→ [Check workspace exists]
+git push origin feature/auth          │
+                                      ├── Create if missing ──→ [Fork master collection]
+                                      └── Use existing ────────→ [Fork master collection]
+
+PR Merge Cleanup:
+PR merged ────────────────────────────→ [Delete forked collection]
+```
+
 The naming convention keeps everything organized: workspaces are `[org] repo-name`, master collections are `[org] repo-name #main`, and branch collections are `[org] repo-name #feature-description`. This makes it immediately obvious what you're looking at in Postman, even with dozens of repositories and hundreds of collections.
 
 For security, it validates users against your Postman team membership. If someone's not on the team, they can still push code but won't trigger Postman resource creation. You can override this with a variable if you want to allow everyone (useful for open source or just-in-time licensing).
