@@ -1,4 +1,4 @@
-# Postman Scaffolding - GitHub to Postman Automation
+# Postman Scaffolding - VCS > Postman Automation
 
 ## What This Solves
 
