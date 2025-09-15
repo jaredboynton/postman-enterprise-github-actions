@@ -25,9 +25,6 @@ First, you need a Postman Team or Enterprise account and a Github Organization w
 Copy the workflow and script to your repository:
 
 ```bash
-# Rename the reference directory to activate GitHub Actions
-mv github-reference .github
-
 # Copy files to your repo
 cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
 cp -r scripts/create-postman-resources.js <your-repo>/scripts/
