@@ -97,28 +97,28 @@ gh workflow run postman-sync-repo.yml \
 
 Deploy Postman integration across your entire GitHub organization with centralized management. This approach eliminates the need to copy scripts to each repository.
 
-### Step 1: Deploy the Org Workflow
+### Prerequisites
 
-Copy `postman-sync-org.yml` to your organization's `.github` repository:
+1. Copy `postman-sync-org.yml` to your organization's `.github` repository:
+   ```bash
+   # In your org's .github repository
+   cp postman-sync-org.yml .github/workflows/
+   ```
 
-```bash
-# In your org's .github repository
-cp postman-sync-org.yml .github/workflows/
-```
+2. Set your Postman API key at the organization level:
+   ```bash
+   gh secret set POSTMAN_API_KEY --org your-org-name --body "your-postman-api-key"
+   ```
 
-This workflow automatically downloads the required script from postman-cs/postman-scaffolding, so individual repositories don't need to maintain their own copies.
+Now choose your setup approach:
 
-### Step 2: Configure Organization Secret
+### Option A: Simple Setup (Manual Variable Storage)
 
-Set your Postman API key at the organization level:
+Best for organizations prioritizing simplicity and transparency. Requires a one-time manual step per repository.
 
-```bash
-gh secret set POSTMAN_API_KEY --org your-org-name --body "your-postman-api-key"
-```
+#### Repository Configuration
 
-### Step 3: Enable in Repositories
-
-Add this minimal workflow to any repository that needs Postman integration:
+Add this minimal workflow to any repository:
 
 ```yaml
 # .github/workflows/postman.yml
@@ -136,11 +136,11 @@ jobs:
     secrets: inherit
 ```
 
-### Step 4: Initial Setup (First Run Only)
+#### One-Time Setup
 
-The first push to main/master creates your workspace and master collection. Due to GitHub Actions security boundaries, you'll need to manually store the generated IDs:
+After the first push to main/master:
 
-1. Check the workflow run output for the created IDs:
+1. Check the workflow output for created IDs:
    ```bash
    gh run view --log | grep -E "(workspace_id|master_collection_id)"
    ```
@@ -151,7 +151,74 @@ The first push to main/master creates your workspace and master collection. Due 
    gh variable set POSTMAN_MASTER_COLLECTION_ID --body "<collection-id>"
    ```
 
-This one-time setup enables efficient collection forking for all future branches. The org workflow handles everything else automatically.
+### Option B: Advanced Setup (Fully Automated)
+
+Best for organizations managing 50+ repositories. Completely automates variable storage using repository dispatch.
+
+#### Additional Organization Setup
+
+Create a GitHub PAT with `repo` scope for automated variable storage:
+
+```bash
+gh secret set ORG_DISPATCH_TOKEN --org your-org-name --body "<github-pat-with-repo-scope>"
+```
+
+#### Repository Configuration
+
+Add this expanded workflow to handle automated variable storage:
+
+```yaml
+# .github/workflows/postman.yml
+name: Postman Integration
+on:
+  push:
+    branches: [main, master, 'feature/**', 'bugfix/**', 'hotfix/**']
+  create:
+  pull_request:
+    types: [closed]
+
+  # Listen for variable storage from org workflow
+  repository_dispatch:
+    types: [postman-resources-created]
+
+jobs:
+  sync:
+    if: github.event_name != 'repository_dispatch'
+    uses: your-org/.github/.github/workflows/postman-sync-org.yml@main
+    secrets: inherit
+
+  # Automatically store variables when workspace is created
+  store-variables:
+    if: github.event_name == 'repository_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Store Postman IDs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Storing Postman workspace and collection IDs..."
+          gh variable set POSTMAN_WORKSPACE_ID \
+            --repo ${{ github.repository }} \
+            --body "${{ github.event.client_payload.workspace_id }}"
+          gh variable set POSTMAN_MASTER_COLLECTION_ID \
+            --repo ${{ github.repository }} \
+            --body "${{ github.event.client_payload.master_collection_id }}"
+          echo "✓ Variables stored successfully"
+```
+
+With this setup, everything is automated - no manual steps required.
+
+### Choosing Your Approach
+
+| Aspect | Simple Setup | Advanced Setup |
+|--------|-------------|----------------|
+| Manual Steps | One-time per repo (30 seconds) | None |
+| Repository Workflow | 12 lines | 35 lines |
+| Additional Secrets | None | PAT with repo scope |
+| Best For | < 50 repositories | 50+ repositories |
+| Security Considerations | None | Repos accept dispatch events |
 
 ## How User Validation Works
 
@@ -166,9 +233,13 @@ The system uses GitHub repository variables to maintain workspace context:
 - `POSTMAN_WORKSPACE_ID` - The workspace UUID for this repository
 - `POSTMAN_MASTER_COLLECTION_ID` - The master collection UUID for efficient forking
 
-**For Repository-Level Setup**: These are automatically stored after workspace creation.
+### How Variables Are Stored
 
-**For Organization-Level Setup**: Due to cross-repository permission boundaries, these must be manually stored after the first workflow run (see Organization-Level Setup, Step 4). This is a one-time configuration per repository.
+**Repository-Level Setup**: Automatically stored after workspace creation (requires `gh` CLI access).
+
+**Organization-Level Setup**:
+- **Simple Setup**: Manually stored after first run (one-time, takes 30 seconds)
+- **Advanced Setup**: Automatically stored via repository dispatch (requires ORG_DISPATCH_TOKEN)
 
 ## Troubleshooting
 
