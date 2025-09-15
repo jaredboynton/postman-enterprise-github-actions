@@ -22,16 +22,16 @@ Requires GitHub Enterprise or GitHub.com repository access, a Postman Team or En
 
 1. **Copy Integration Files**
 
-   **Note**: The GitHub Actions workflows are stored in `github-reference/` to prevent automatic execution on this reference repository.
-   
-   ```bash
-   # First, rename the reference directory to activate GitHub Actions
-   mv github-reference .github
-   
-   # Copy the workflow and scripts to your repository  
-   cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
-   cp -r scripts/create-postman-resources.js <your-repo>/scripts/
-   ```
+ **Note**: The GitHub Actions workflows are stored in `github-reference/` to prevent automatic execution on this reference repository.
+ 
+ ```bash
+ # First, rename the reference directory to activate GitHub Actions
+ mv github-reference .github
+ 
+ # Copy the workflow and scripts to your repository  
+ cp -r .github/workflows/postman-sync.yml <your-repo>/.github/workflows/
+ cp -r scripts/create-postman-resources.js <your-repo>/scripts/
+ ```
 
 2. **Configure GitHub Secrets**
 ```bash
@@ -163,28 +163,6 @@ jobs:
 | `action` | `create-workspace` or `create-collection` | Required |
 | `resource_name` | Name of workspace/collection | Auto-generated |
 | `workspace_id` | Target workspace for collections | From variables |
-
-## Architecture
-
-### Workflow Logic
-```mermaid
-graph TD
-    A[GitHub Event] --> B{Event Type?}
-    B -->|Branch Create| C[Generate Collection Name]
-    B -->|PR Merge| D[Delete Fork Collection]
-    B -->|Manual| E[User Input]
-    
-    C --> F{User in Team?}
-    F -->|Yes| G[Create/Fork Collection]
-    F -->|No + Override| G
-    F -->|No| H[Warning Only]
-    
-    D --> I[Find Fork]
-    I --> J[Delete Collection]
-    
-    G --> K[Store IDs]
-    K --> L[Summary Report]
-```
 
 ### Authorization and User Validation
 
