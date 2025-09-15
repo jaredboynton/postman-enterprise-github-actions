@@ -1,12 +1,10 @@
-# Postman Scaffolding - VCS > Postman Automation
+# Postman Scaffolding - GitHub to Postman Automation
 
-## What This Solves
+## What This Does
 
-This integration creates Postman workspaces and collections that mirror your GitHub repository structure automatically. When you create a repo, you get a workspace. When you create a branch, you get a forked collection. When you merge a PR, the fork gets cleaned up. No manual steps, no forgotten collections, no workspace sprawl.
+Automates Postman workspace and collection management to mirror your GitHub repository structure. Push to main creates a workspace. Create a feature branch, get a forked collection. Merge the PR, the fork disappears. Zero manual collection management.
 
-The real value here is that your API documentation and testing assets now follow the same branching strategy as your code. Feature branches get isolated collections that can be tested without affecting production documentation. When the feature merges, so does the collection content (though that part you still handle manually - this just manages the structure).
-
-Everything's nice, clean, and follows naming conventions.
+Your API documentation and testing assets follow the same branching strategy as your code. Feature branches get isolated collections for testing without affecting production documentation. The structure stays organized automatically while you handle the actual collection content.
 
 ## How It Works
 
@@ -16,27 +14,24 @@ The naming convention keeps everything organized: workspaces are `[org] repo-nam
 
 For security, it validates users against your Postman team membership. If someone's not on the team, they can still push code but won't trigger Postman resource creation. You can override this with a variable if you want to allow everyone (useful for open source or just-in-time licensing).
 
-## Installation
+## Quick Start
 
-First, you need a Postman Team or Enterprise account and a Github Organization where you have admin access. The workflow files are in `.github`.
+### For Individual Repositories
 
-### Basic Setup
-
-Copy the workflow and script to your repository:
+Copy the standalone workflow and script to your repository:
 
 ```bash
-# Copy files to your repo
-cp -r .github/workflows/postman-sync-repo.yml <your-repo>/.github/workflows/
-cp -r scripts/create-postman-resources.js <your-repo>/scripts/
+cp .github/workflows/postman-sync-repo.yml <your-repo>/.github/workflows/
+cp scripts/create-postman-resources.js <your-repo>/scripts/
 ```
 
-Set up your Postman API key as a GitHub secret:
+Set your Postman API key:
 
 ```bash
 gh secret set POSTMAN_API_KEY --body "your-postman-api-key"
 ```
 
-That's it for basic setup. The first push to main will create your workspace and master collection automatically.
+Push to main to create your workspace and master collection.
 
 ### Optional Configuration
 
@@ -95,30 +90,46 @@ gh workflow run postman-sync-repo.yml \
 
 ## Organization-Level Setup
 
-Deploy Postman integration across your entire GitHub organization with centralized management. This approach eliminates the need to copy scripts to each repository.
+Two ways to deploy this across your organization:
 
-### Prerequisites
+### Automated Propagation (Recommended)
 
-1. Copy `postman-sync-org.yml` to your organization's `.github` repository:
+This approach automatically creates PRs to add the Postman workflow to all repositories in your organization. New repos get the workflow within 24 hours, existing repos get a one-time PR.
+
+#### Setup
+
+1. Fork or copy this repository to your organization
+2. Copy the workflows to your org's `.github` repository:
    ```bash
-   # In your org's .github repository
-   cp postman-sync-org.yml .github/workflows/
+   cp .github/workflows/postman-sync-org.yml your-org/.github/.github/workflows/
+   cp .github/workflows/workflow-propagator.yml your-org/.github/.github/workflows/
    ```
 
-2. Set your Postman API key at the organization level:
+3. Set organization secrets:
    ```bash
+   # Required: Postman API key
    gh secret set POSTMAN_API_KEY --org your-org-name --body "your-postman-api-key"
+
+   # Required: GitHub PAT with repo and workflow scope for creating PRs
+   gh secret set ORG_PROPAGATOR_TOKEN --org your-org-name --body "<github-pat>"
    ```
 
-Now choose your setup approach:
+4. Run the propagator manually to set up existing repos:
+   ```bash
+   gh workflow run workflow-propagator.yml --org your-org-name
+   ```
 
-### Option A: Simple Setup (Manual Variable Storage)
+The propagator runs daily at 2 AM UTC and:
+- Scans all repositories in the organization
+- Creates PRs for repos missing the Postman workflow
+- Skips repos that already have the workflow or an open PR
+- Provides a summary of actions taken
 
-Best for organizations prioritizing simplicity and transparency. Requires a one-time manual step per repository.
+You can also run it manually with dry-run mode or target specific repositories.
 
-#### Repository Configuration
+### Manual Setup
 
-Add this minimal workflow to any repository:
+If you prefer not to use automated propagation, add the workflow manually to each repository:
 
 ```yaml
 # .github/workflows/postman.yml
@@ -136,36 +147,20 @@ jobs:
     secrets: inherit
 ```
 
-#### One-Time Setup
-
-After the first push to main/master:
-
-1. Check the workflow output for created IDs:
-   ```bash
-   gh run view --log | grep -E "(workspace_id|master_collection_id)"
-   ```
-
-2. Store them as repository variables:
-   ```bash
-   gh variable set POSTMAN_WORKSPACE_ID --body "<workspace-id>"
-   gh variable set POSTMAN_MASTER_COLLECTION_ID --body "<collection-id>"
-   ```
-
-### Option B: Advanced Setup (Fully Automated)
-
-Best for organizations managing 50+ repositories. Completely automates variable storage using repository dispatch.
-
-#### Additional Organization Setup
-
-Create a GitHub PAT with `repo` scope for automated variable storage:
+After the first workflow run, store the generated IDs:
 
 ```bash
-gh secret set ORG_DISPATCH_TOKEN --org your-org-name --body "<github-pat-with-repo-scope>"
+# Get the IDs from workflow output
+gh run view --log | grep -E "(workspace_id|master_collection_id)"
+
+# Store as repository variables
+gh variable set POSTMAN_WORKSPACE_ID --body "<workspace-id>"
+gh variable set POSTMAN_MASTER_COLLECTION_ID --body "<collection-id>"
 ```
 
-#### Repository Configuration
+### Advanced Configuration: Automated Variable Storage
 
-Add this expanded workflow to handle automated variable storage:
+For fully automated variable storage (no manual steps), add repository dispatch support:
 
 ```yaml
 # .github/workflows/postman.yml
@@ -208,17 +203,7 @@ jobs:
           echo "✓ Variables stored successfully"
 ```
 
-With this setup, everything is automated - no manual steps required.
-
-### Choosing Your Approach
-
-| Aspect | Simple Setup | Advanced Setup |
-|--------|-------------|----------------|
-| Manual Steps | One-time per repo (30 seconds) | None |
-| Repository Workflow | 12 lines | 35 lines |
-| Additional Secrets | None | PAT with repo scope |
-| Best For | < 50 repositories | 50+ repositories |
-| Security Considerations | None | Repos accept dispatch events |
+This eliminates the manual variable storage step by using repository dispatch to send IDs back to the calling repository. Requires an additional PAT with repo scope set as `ORG_DISPATCH_TOKEN`.
 
 ## How User Validation Works
 
@@ -233,13 +218,11 @@ The system uses GitHub repository variables to maintain workspace context:
 - `POSTMAN_WORKSPACE_ID` - The workspace UUID for this repository
 - `POSTMAN_MASTER_COLLECTION_ID` - The master collection UUID for efficient forking
 
-### How Variables Are Stored
+### Variable Storage
 
-**Repository-Level Setup**: Automatically stored after workspace creation (requires `gh` CLI access).
+**With Automated Propagation**: After merging the PR and first push to main, check the workflow output for workspace/collection IDs and store them manually (one-time, 30-second task).
 
-**Organization-Level Setup**:
-- **Simple Setup**: Manually stored after first run (one-time, takes 30 seconds)
-- **Advanced Setup**: Automatically stored via repository dispatch (requires ORG_DISPATCH_TOKEN)
+**With Repository Dispatch**: Variables are stored automatically when workspace is created (requires `ORG_DISPATCH_TOKEN` with repo scope).
 
 ## Troubleshooting
 
@@ -263,10 +246,22 @@ curl -X GET https://api.getpostman.com/users \
   -H "X-API-Key: $POSTMAN_API_KEY"
 ```
 
-## Technical Details
+## Architecture
 
-The Node.js script handles all Postman API interactions. It creates workspaces with master collections, intelligently forks collections based on naming patterns, and manages the full lifecycle. The GitHub workflow determines what action to take based on the event type and branch name, then calls the appropriate script function.
+### Components
 
-The master collection ID optimization means branch creation goes from three API calls (get workspace, search collections, fork) to just one (fork with known ID). This matters when you have teams creating dozens of branches per day.
+**Workflow Propagator** (`workflow-propagator.yml`): Runs daily to scan your organization and create PRs for repositories missing the Postman workflow. Can be run manually with dry-run mode or targeted at specific repos.
 
-The problem with administering Postman at scale isn't the process - it's expecting humans to remember to do repetitive tasks. Automation solves this completely. Now you can have nice, clean, and organized Postman structure that mirror your existing development structures without even thinking about it.
+**Organization Workflow** (`postman-sync-org.yml`): Centralized reusable workflow containing all Postman integration logic. Downloads scripts dynamically so individual repos don't need to maintain them.
+
+**Repository Workflow** (`templates/postman-workflow.yml`): Minimal wrapper that calls the org workflow. This is what gets propagated to each repository.
+
+**Resource Creation Script** (`scripts/create-postman-resources.js`): Handles Postman API interactions - workspace creation, collection forking, and cleanup. Intelligently forks from master collection when creating branch collections.
+
+### How It Works
+
+The system uses GitHub repository variables to maintain state. When a workspace is created, the IDs are stored as `POSTMAN_WORKSPACE_ID` and `POSTMAN_MASTER_COLLECTION_ID`. The master collection ID optimization reduces API calls from three (get workspace, search collections, fork) to one (direct fork with known ID).
+
+Branch detection uses GitHub event context to determine actions - push to main ensures workspace exists, feature branch creation triggers collection forking, and PR merge triggers cleanup. User validation checks Postman team membership via email, with an override option for open source projects.
+
+The propagator creates non-intrusive PRs that teams can review and merge when ready. Once merged, the Postman integration activates automatically on the next push to main.
