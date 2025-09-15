@@ -15,16 +15,17 @@ The integration operates on a simple principle: GitHub events trigger Postman AP
 ```
 GitHub Event Flow → Postman Actions
 
-Repository Setup:
-git push origin main ──────────────→ [Auto-create workspace + master collection]
-                                     │
-                                     └── Store workspace/collection IDs
-
-Feature Development:
-git checkout -b feature/auth ─────────→ [Check workspace exists]
+Any Git Activity:
+git push origin main ─────────────────→ [Check workspace exists]
 git push origin feature/auth          │
-                                      ├── Create if missing ──→ [Fork master collection]
-                                      └── Use existing ────────→ [Fork master collection]
+git checkout -b feature/new           ├── Exists ──────────→ [Continue with action]
+                                      │
+                                      └── Missing ─────────→ [Auto-create workspace + master collection]
+                                                            │
+                                                            └── Store workspace/collection IDs
+
+Feature Branch Actions:
+Feature branch push ──────────────────→ [Fork master collection]
 
 PR Merge Cleanup:
 PR merged ────────────────────────────→ [Delete forked collection]
