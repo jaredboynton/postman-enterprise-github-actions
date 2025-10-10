@@ -69,8 +69,8 @@ jobs:
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           echo "action_type=${{ inputs.action }}" >> $GITHUB_OUTPUT
           if [ "${{ inputs.action }}" = "create-workspace" ]; then
-            # Workspace name format: "[team] repo-name"
-            echo "resource_name=${ORG_OR_USER} ${REPO_NAME}" >> $GITHUB_OUTPUT
+            # Workspace name format: "[org] repo-name"
+            echo "resource_name=[${ORG_OR_USER}] ${REPO_NAME}" >> $GITHUB_OUTPUT
           else
             echo "resource_name=${{ inputs.resource_name }}" >> $GITHUB_OUTPUT
           fi
@@ -79,10 +79,10 @@ jobs:
           BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
           if [[ "$BRANCH_NAME" =~ ^(feature|bugfix|hotfix)/ ]]; then
             echo "action_type=merge-cleanup" >> $GITHUB_OUTPUT
-            # Collection name format: "[team] repo-name #branch-type"
+            # Collection name format: "[org] repo-name #branch-type"
             BRANCH_TYPE=$(echo $BRANCH_NAME | sed 's|/.*||')
             BRANCH_DETAIL=$(echo $BRANCH_NAME | sed 's|^[^/]*/||')
-            echo "resource_name=${ORG_OR_USER} ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
+            echo "resource_name=[${ORG_OR_USER}] ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
           else
             echo "action_type=skip" >> $GITHUB_OUTPUT
           fi
@@ -91,10 +91,10 @@ jobs:
           BRANCH_NAME="${{ github.ref_name }}"
           if [[ "$BRANCH_NAME" =~ ^(feature|bugfix|hotfix)/ ]]; then
             echo "action_type=create-collection" >> $GITHUB_OUTPUT
-            # Collection name format: "[team] repo-name #branch-type"
+            # Collection name format: "[org] repo-name #branch-type"
             BRANCH_TYPE=$(echo $BRANCH_NAME | sed 's|/.*||')
             BRANCH_DETAIL=$(echo $BRANCH_NAME | sed 's|^[^/]*/||')
-            echo "resource_name=${ORG_OR_USER} ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
+            echo "resource_name=[${ORG_OR_USER}] ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
           else
             echo "action_type=skip" >> $GITHUB_OUTPUT
           fi
@@ -103,14 +103,14 @@ jobs:
           if [[ "$BRANCH_NAME" =~ ^(main|master)$ ]]; then
             # Push to main/master - ensure workspace exists
             echo "action_type=ensure-workspace" >> $GITHUB_OUTPUT
-            echo "resource_name=${ORG_OR_USER} ${REPO_NAME}" >> $GITHUB_OUTPUT
+            echo "resource_name=[${ORG_OR_USER}] ${REPO_NAME}" >> $GITHUB_OUTPUT
           else
             # Push to feature/bugfix/hotfix branch
             echo "action_type=create-collection" >> $GITHUB_OUTPUT
-            # Collection name format: "[team] repo-name #branch-type"
+            # Collection name format: "[org] repo-name #branch-type"
             BRANCH_TYPE=$(echo $BRANCH_NAME | sed 's|/.*||')
             BRANCH_DETAIL=$(echo $BRANCH_NAME | sed 's|^[^/]*/||')
-            echo "resource_name=${ORG_OR_USER} ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
+            echo "resource_name=[${ORG_OR_USER}] ${REPO_NAME} #${BRANCH_TYPE}-${BRANCH_DETAIL}" >> $GITHUB_OUTPUT
           fi
         else
           echo "action_type=skip" >> $GITHUB_OUTPUT
@@ -242,7 +242,7 @@ jobs:
           REPO="${{ github.repository }}"
           ORG_OR_USER=$(echo $REPO | cut -d'/' -f1)
           REPO_NAME=$(echo $REPO | cut -d'/' -f2)
-          WORKSPACE_NAME="${ORG_OR_USER} ${REPO_NAME}"
+          WORKSPACE_NAME="[${ORG_OR_USER}] ${REPO_NAME}"
 
           # Create workspace
           node scripts/create-postman-resources.js workspace "$WORKSPACE_NAME"
